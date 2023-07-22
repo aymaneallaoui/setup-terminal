@@ -20,7 +20,7 @@ launch `install_dependencies.ps1` to install all the dependencies and wait for i
 
 ## fifth step:
 
-launch config.bat to configure the terminal and wait for it to finish.
+launch `config.bat` to configure the terminal and wait for it to finish.
 
 # features:
 
