@@ -12,7 +12,15 @@ launch `installer.py` or `dist\installer.exe` with admin privileges to configure
 
 ## third step:
 
+launch `setup.bat` to configure the terminal and wait for it to finish.
+
+## fourth step:
+
 launch `install_dependencies.ps1` to install all the dependencies and wait for it to finish
+
+## fifth step:
+
+launch config.bat to configure the terminal and wait for it to finish.
 
 # features:
 
