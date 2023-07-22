@@ -42,4 +42,4 @@ powershell commands auto completion `Get-` will be completed to `Get-Command` an
 
 # Contributing
 
-If someone wants to add or improve something, I invite you to collaborate directly in this repository: [terminal-setup](
+If someone wants to add or improve something, I invite you to collaborate directly in this repository: [terminal-setup](https://github.com/aymaneallaoui/setup-terminal)
