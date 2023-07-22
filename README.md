@@ -4,13 +4,17 @@
 
 ## first setp:
 
-launch `setup.bat` to install all the packages and wait for it to finish
+launch `iwr_install.ps1` to install all the packages and wait for it to finish
 
 ## second step:
 
-launch `config.bat` to configure the terminal and wait for it to finish
+launch `installer.py` or `dist\installer.exe` with admin privileges to configure the terminal and wait for it to finish.
 
-## features:
+## third step:
+
+launch `install_dependencies.ps1` to install all the dependencies and wait for it to finish
+
+# features:
 
 ### terminal icons :
 
