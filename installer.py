@@ -55,8 +55,8 @@ if __name__ == "__main__":
             subprocess.run("iwr --help", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
         except subprocess.CalledProcessError:
             print("Installing iwr...")
-            subprocess.Popen(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "iex (new-object net.webclient).downloadstring('https://get.scoop.sh')"])
-            input("Press Enter after scoop installation completes...")
+            iwr_cmd = "(new-object net.webclient).downloadstring('https://get.scoop.sh')"
+            subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", iwr_cmd], cwd=script_dir)
             print("iwr (scoop) installed.")
 
         
