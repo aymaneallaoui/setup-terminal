@@ -1,5 +1,10 @@
 @echo off
 
+REM Check if the WindowsPowerShell directory exists, if not create it
+if not exist "%USERPROFILE%\Documents\WindowsPowerShell\" (
+  mkdir "%USERPROFILE%\Documents\WindowsPowerShell\"
+)
+
 REM Set the path to the PowerShell profile file
 set "ProfilePath=%USERPROFILE%\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"
 
