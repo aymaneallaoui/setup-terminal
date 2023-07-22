@@ -1,3 +1,8 @@
+start-process powershell -verb runas
+
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+
 # Install PSReadLine module
 Install-Module -Name PSReadLine -AllowClobber -Force
 
@@ -19,13 +24,9 @@ Install-Module -Name PSFzf -Scope CurrentUser -Force
 # Initialize Oh My Posh with the desired theme config
 oh-my-posh init pwsh --config '%USERPROFILE%\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json' | Invoke-Expression
 
-# Import PSFzf module
-Import-Module PSFzf
+
 
 # Configure PSFzf and PSReadLine options
 Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+f' -PSReadlineChordReverseHistory 'Ctrl+r'
 Set-PSReadLineOption -PredictionViewStyle ListView
 Set-PSReadLineOption -PredictionSource History
-
-# Import Terminal-Icons module
-Import-Module Terminal-Icons
