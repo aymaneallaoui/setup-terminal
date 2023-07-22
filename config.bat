@@ -1,6 +1,5 @@
 @echo off
 
-REM Check if the WindowsPowerShell directory exists, if not create it
 if not exist "%USERPROFILE%\Documents\WindowsPowerShell\" (
   mkdir "%USERPROFILE%\Documents\WindowsPowerShell\"
 )
@@ -8,10 +7,10 @@ if not exist "%USERPROFILE%\Documents\WindowsPowerShell\" (
 REM Set the path to the PowerShell profile file
 set "ProfilePath=%USERPROFILE%\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"
 
-REM Create the PowerShell profile file if it doesn't exist
+
 if not exist "%ProfilePath%" type nul > "%ProfilePath%"
 
-REM Check if the configuration commands already exist in the profile file
+
 findstr /m "oh-my-posh init pwsh" "%ProfilePath%" > nul
 if %errorlevel% neq 0 (
   REM Add the configuration to the PowerShell profile if not already present
