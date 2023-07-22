@@ -12,7 +12,7 @@ if %errorlevel% neq 0 (
   REM Add the configuration to the PowerShell profile if not already present
   (
     REM Initialize Oh My Posh with the desired theme config
-    echo oh-my-posh init pwsh --config '%USERPROFILE%\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json' | Invoke-Expression
+    echo oh-my-posh init pwsh --config '%USERPROFILE%\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json' ^| Invoke-Expression
     echo Import-Module Terminal-Icons
     echo Import-Module PSFzf
     echo Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+f' -PSReadlineChordReverseHistory 'Ctrl+r'
