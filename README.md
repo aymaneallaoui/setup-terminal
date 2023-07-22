@@ -1,6 +1,6 @@
 # my terminal setup:
 
-![Alt text](image.png)
+![Alt text](image-6.png)
 
 ## first setp:
 
