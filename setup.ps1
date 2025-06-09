@@ -33,6 +33,8 @@ function Install-Scoop {
     
     if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
         try {
+            # Set execution policy and install Scoop
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
             iex ((New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh'))
             Write-ColoredOutput "Scoop installed successfully" -Type "Success"
         }
@@ -197,12 +199,27 @@ foreach ($module in $modules) {
     }
 }
 
-# PSReadLine configuration
+# PSReadLine configuration with version compatibility
 if (Get-Module PSReadLine) {
-    Set-PSReadLineOption -PredictionViewStyle ListView
-    Set-PSReadLineOption -PredictionSource History
+    $psReadLineVersion = (Get-Module PSReadLine).Version
+    
+    # Basic configuration that works on all versions
     Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
     Set-PSReadLineKeyHandler -Key "Ctrl+f" -Function ForwardWord
+    
+    # Advanced features for newer versions (2.1.0+)
+    if ($psReadLineVersion -ge [Version]"2.1.0") {
+        try {
+            Set-PSReadLineOption -PredictionViewStyle ListView
+            Set-PSReadLineOption -PredictionSource History
+            Write-Host "PSReadLine advanced features enabled" -ForegroundColor Green
+        } catch {
+            Write-Warning "Some PSReadLine features not available in this version"
+        }
+    } else {
+        Write-Host "PSReadLine basic features enabled (version $psReadLineVersion)" -ForegroundColor Yellow
+        Write-Host "Update PSReadLine for advanced features: Update-Module PSReadLine" -ForegroundColor Yellow
+    }
     
     # History search with fzf if available
     if (Get-Command fzf -ErrorAction SilentlyContinue) {
@@ -210,34 +227,57 @@ if (Get-Module PSReadLine) {
             $line = $null
             $cursor = $null
             [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
-            $selection = Get-Content (Get-PSReadLineOption).HistorySavePath | fzf --tac
-            if ($selection) {
-                [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-                [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selection)
+            $historyPath = (Get-PSReadLineOption).HistorySavePath
+            if (Test-Path $historyPath) {
+                $selection = Get-Content $historyPath | fzf --tac --no-sort
+                if ($selection) {
+                    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($selection)
+                }
             }
         }
+    } else {
+        # Fallback to standard reverse search
+        Set-PSReadLineKeyHandler -Key "Ctrl+r" -Function ReverseSearchHistory
     }
 }
 
 # PSFzf configuration
 if (Get-Module PSFzf) {
-    Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
+    try {
+        Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r'
+    } catch {
+        Write-Warning "PSFzf configuration failed, using defaults"
+    }
 }
 
 # Oh My Posh initialization
 if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-    $themePath = "$env:USERPROFILE\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json"
-    if (Test-Path $themePath) {
-        oh-my-posh init pwsh --config $themePath | Invoke-Expression
-    } else {
-        # Fallback to a built-in theme
-        oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\paradox.omp.json" | Invoke-Expression
+    # Try different theme paths
+    $themePaths = @(
+        "$env:USERPROFILE\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json",
+        "$env:POSH_THEMES_PATH\montys.omp.json",
+        "$env:POSH_THEMES_PATH\paradox.omp.json"
+    )
+    
+    $themeFound = $false
+    foreach ($themePath in $themePaths) {
+        if (Test-Path $themePath) {
+            oh-my-posh init pwsh --config $themePath | Invoke-Expression
+            $themeFound = $true
+            break
+        }
+    }
+    
+    if (!$themeFound) {
+        # Use default theme
+        oh-my-posh init pwsh | Invoke-Expression
     }
 }
 
 # Aliases
-Set-Alias -Name ll -Value Get-ChildItem
-Set-Alias -Name l -Value Get-ChildItem
+Set-Alias -Name ll -Value Get-ChildItem -Force
+Set-Alias -Name l -Value Get-ChildItem -Force
 function la { Get-ChildItem -Force @args }
 function lla { Get-ChildItem -Force -Format Wide @args }
 
@@ -292,6 +332,10 @@ function mkcd($dir) {
     Set-Location $dir
 }
 
+function reload {
+    . $PROFILE
+}
+
 # Enhanced cd function with history
 function Set-LocationWithHistory {
     param([string]$Path = "~")
@@ -306,16 +350,25 @@ function Set-LocationWithHistory {
         Set-Location $Path
     }
 }
-Set-Alias -Name cd -Value Set-LocationWithHistory -Option AllScope
+Set-Alias -Name cd -Value Set-LocationWithHistory -Option AllScope -Force
 
 # Welcome message
 Write-Host "PowerShell Universal Terminal Setup loaded successfully!" -ForegroundColor Green
 Write-Host "Features available:" -ForegroundColor Cyan
 Write-Host "  • Enhanced command history (Ctrl+R)" -ForegroundColor Gray
-Write-Host "  • File finder with fzf (Ctrl+T)" -ForegroundColor Gray
+Write-Host "  • File finder with fzf (Ctrl+T)" -ForegroundColor Gray  
 Write-Host "  • Git aliases (gs, ga, gc, gp, gl, gd, gb, gco)" -ForegroundColor Gray
 Write-Host "  • Utility functions (which, grep, touch, df, mkcd)" -ForegroundColor Gray
 Write-Host "  • Beautiful prompt with git status" -ForegroundColor Gray
+
+# Show PSReadLine version info
+if (Get-Module PSReadLine) {
+    $version = (Get-Module PSReadLine).Version
+    Write-Host "  • PSReadLine version: $version" -ForegroundColor Gray
+    if ($version -lt [Version]"2.1.0") {
+        Write-Host "    Tip: Update PSReadLine for enhanced features: Update-Module PSReadLine" -ForegroundColor Yellow
+    }
+}
 '@
 
     # Write the profile
@@ -330,7 +383,7 @@ function Install-NerdFont {
     try {
         if (Get-Command scoop -ErrorAction SilentlyContinue) {
             # Add nerd-fonts bucket and install a font
-            scoop bucket add nerd-fonts
+            scoop bucket add nerd-fonts 2>$null
             scoop install FiraCode-NF
             Write-ColoredOutput "FiraCode Nerd Font installed via Scoop" -Type "Success"
         }
@@ -342,6 +395,25 @@ function Install-NerdFont {
     catch {
         Write-ColoredOutput "Failed to install Nerd Font: $($_.Exception.Message)" -Type "Warning"
         Write-ColoredOutput "You can install manually from: https://www.nerdfonts.com/font-downloads" -Type "Info"
+    }
+}
+
+# Function to update PSReadLine
+function Update-PSReadLine {
+    Write-ColoredOutput "Checking PSReadLine version..." -Type "Step"
+    
+    try {
+        $currentVersion = (Get-Module PSReadLine -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).Version
+        if ($currentVersion -lt [Version]"2.1.0") {
+            Write-ColoredOutput "Updating PSReadLine for enhanced features..." -Type "Info"
+            Install-Module PSReadLine -Force -SkipPublisherCheck -Scope CurrentUser
+            Write-ColoredOutput "PSReadLine updated successfully. Restart PowerShell to use new features." -Type "Success"
+        } else {
+            Write-ColoredOutput "PSReadLine is up to date (version $currentVersion)" -Type "Info"
+        }
+    }
+    catch {
+        Write-ColoredOutput "Failed to update PSReadLine: $($_.Exception.Message)" -Type "Warning"
     }
 }
 
@@ -358,6 +430,10 @@ function Start-Setup {
     
     Write-ColoredOutput "Starting PowerShell terminal setup..." -Type "Info"
     
+    # Check PowerShell version
+    $psVersion = $PSVersionTable.PSVersion
+    Write-ColoredOutput "PowerShell version: $psVersion" -Type "Info"
+    
     # Check if running as admin (optional for some features)
     if (Test-Administrator) {
         Write-ColoredOutput "Running as Administrator - all features will be available" -Type "Info"
@@ -368,6 +444,7 @@ function Start-Setup {
     # Install components
     $success = $true
     
+    Update-PSReadLine
     if (!(Install-Scoop)) { $success = $false }
     if (!(Install-Winget)) { $success = $false }
     if (!(Install-OhMyPosh)) { $success = $false }
