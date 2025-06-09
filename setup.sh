@@ -36,6 +36,20 @@ log_step() {
     echo -e "${PURPLE}[STEP]${NC} $1"
 }
 
+# Check if running as root
+is_root() {
+    [[ $EUID -eq 0 ]]
+}
+
+# Execute command with or without sudo based on current user
+execute_as_needed() {
+    if is_root; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 # Detect environment
 detect_environment() {
     if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WSLENV" ]]; then
@@ -62,26 +76,36 @@ is_powershell() {
 install_linux_packages() {
     log_step "Installing Linux packages..."
     
+    if is_root; then
+        log_info "Running as root - no sudo needed"
+    else
+        log_info "Running as regular user - will use sudo"
+    fi
+    
     if command -v apt-get &> /dev/null; then
         # Debian/Ubuntu
-        sudo apt-get update
-        sudo apt-get install -y curl git build-essential fontconfig
+        execute_as_needed apt-get update
+        execute_as_needed apt-get install -y curl git build-essential fontconfig zsh
     elif command -v yum &> /dev/null; then
         # RedHat/CentOS
-        sudo yum update -y
-        sudo yum install -y curl git gcc make fontconfig
+        execute_as_needed yum update -y
+        execute_as_needed yum install -y curl git gcc make fontconfig zsh
     elif command -v pacman &> /dev/null; then
         # Arch Linux
-        sudo pacman -Syu --noconfirm
-        sudo pacman -S --noconfirm curl git base-devel fontconfig
+        execute_as_needed pacman -Syu --noconfirm
+        execute_as_needed pacman -S --noconfirm curl git base-devel fontconfig zsh
     elif command -v dnf &> /dev/null; then
         # Fedora
-        sudo dnf update -y
-        sudo dnf install -y curl git gcc make fontconfig
+        execute_as_needed dnf update -y
+        execute_as_needed dnf install -y curl git gcc make fontconfig zsh
     elif command -v zypper &> /dev/null; then
         # openSUSE
-        sudo zypper refresh
-        sudo zypper install -y curl git gcc make fontconfig
+        execute_as_needed zypper refresh
+        execute_as_needed zypper install -y curl git gcc make fontconfig zsh
+    elif command -v apk &> /dev/null; then
+        # Alpine Linux
+        execute_as_needed apk update
+        execute_as_needed apk add curl git build-base fontconfig zsh
     else
         log_warning "Unknown package manager. Please install curl, git, and build tools manually."
     fi
@@ -330,11 +354,13 @@ setup_linux() {
         install_zsh_plugins
         configure_zsh
         
-        # Change default shell to zsh if not already
-        if [[ "$SHELL" != *"zsh"* ]]; then
+        # Change default shell to zsh if not already (and not root)
+        if [[ "$SHELL" != *"zsh"* ]] && ! is_root; then
             log_step "Changing default shell to Zsh..."
             chsh -s $(which zsh)
             log_success "Default shell changed to Zsh. Please restart your terminal."
+        elif is_root; then
+            log_info "Running as root - shell change skipped. You can manually switch to zsh."
         fi
     else
         log_info "Setting up Bash configuration..."
@@ -555,6 +581,20 @@ main() {
     echo "║  • Beautiful prompt with git status                          ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+    
+    # Special message for root users
+    if is_root; then
+        echo -e "${YELLOW}"
+        echo "╔═══════════════════════════════════════════════════════════════╗"
+        echo "║                    Running as Root                           ║"
+        echo "║                                                               ║"
+        echo "║  You're running as root. To use zsh, simply run: zsh         ║"
+        echo "║  To make zsh your default shell, run: chsh -s /bin/zsh       ║"
+        echo "║                                                               ║"
+        echo "║  For security, consider creating a regular user account.     ║"
+        echo "╚═══════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
+    fi
 }
 
 # Run main function
