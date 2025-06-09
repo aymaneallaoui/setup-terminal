@@ -85,27 +85,27 @@ install_linux_packages() {
     if command -v apt-get &> /dev/null; then
         # Debian/Ubuntu
         execute_as_needed apt-get update
-        execute_as_needed apt-get install -y curl git build-essential fontconfig zsh
+        execute_as_needed apt-get install -y curl git build-essential fontconfig zsh openssh-client
     elif command -v yum &> /dev/null; then
         # RedHat/CentOS
         execute_as_needed yum update -y
-        execute_as_needed yum install -y curl git gcc make fontconfig zsh
+        execute_as_needed yum install -y curl git gcc make fontconfig zsh openssh-clients
     elif command -v pacman &> /dev/null; then
         # Arch Linux
         execute_as_needed pacman -Syu --noconfirm
-        execute_as_needed pacman -S --noconfirm curl git base-devel fontconfig zsh
+        execute_as_needed pacman -S --noconfirm curl git base-devel fontconfig zsh openssh
     elif command -v dnf &> /dev/null; then
         # Fedora
         execute_as_needed dnf update -y
-        execute_as_needed dnf install -y curl git gcc make fontconfig zsh
+        execute_as_needed dnf install -y curl git gcc make fontconfig zsh openssh-clients
     elif command -v zypper &> /dev/null; then
         # openSUSE
         execute_as_needed zypper refresh
-        execute_as_needed zypper install -y curl git gcc make fontconfig zsh
+        execute_as_needed zypper install -y curl git gcc make fontconfig zsh openssh
     elif command -v apk &> /dev/null; then
         # Alpine Linux
         execute_as_needed apk update
-        execute_as_needed apk add curl git build-base fontconfig zsh
+        execute_as_needed apk add curl git build-base fontconfig zsh openssh-client
     else
         log_warning "Unknown package manager. Please install curl, git, and build tools manually."
     fi
@@ -120,7 +120,9 @@ install_fzf() {
             log_info "fzf directory exists, updating..."
             cd ~/.fzf && git pull
         else
-            git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
+            # Force HTTPS for git clone to avoid SSH issues
+            log_info "Cloning fzf repository..."
+            git -c url."https://github.com/".insteadOf="git@github.com:" clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
         fi
         ~/.fzf/install --all --no-bash --no-zsh --no-fish
         log_success "fzf installed successfully"
@@ -161,17 +163,17 @@ install_zsh_plugins() {
     
     # zsh-autosuggestions
     if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]]; then
-        git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+        git -c url."https://github.com/".insteadOf="git@github.com:" clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
     fi
     
     # zsh-syntax-highlighting
     if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]]; then
-        git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+        git -c url."https://github.com/".insteadOf="git@github.com:" clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
     fi
     
     # powerlevel10k theme
     if [[ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]]; then
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
+        git -c url."https://github.com/".insteadOf="git@github.com:" clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
     fi
     
     log_success "Zsh plugins installed successfully"
