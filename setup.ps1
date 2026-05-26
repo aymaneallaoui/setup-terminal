@@ -86,7 +86,7 @@ function Install-OhMyPosh {
     if (!(Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
         try {
             if (Get-Command winget -ErrorAction SilentlyContinue) {
-                winget install JanDeLaRepr.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements
+                winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements
             }
             elseif (Get-Command scoop -ErrorAction SilentlyContinue) {
                 scoop install oh-my-posh
