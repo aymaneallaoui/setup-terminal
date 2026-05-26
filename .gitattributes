@@ -1,0 +1,27 @@
+# Default: let Git normalize text files in the repo (stored as LF).
+* text=auto
+
+# Unix shell scripts MUST be LF. CRLF endings break the shebang and parsing
+# when a Windows checkout is run under WSL/Linux ("bad interpreter", syntax
+# errors on every line) -- the single most common WSL footgun.
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.zsh   text eol=lf
+
+# Unix-consumed config files.
+*.toml  text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+
+# Windows scripts: keep CRLF for native tooling/editors.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary assets: never normalize or diff.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.exe   binary

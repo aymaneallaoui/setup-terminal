@@ -41,6 +41,33 @@ If you're on Windows and prefer PowerShell:
 iwr -useb https://raw.githubusercontent.com/aymaneallaoui/setup-terminal/master/setup.ps1 | iex
 ```
 
+### Command-Line Options (Linux / WSL / macOS)
+
+`setup.sh` is safe to re-run and accepts a few flags:
+
+```bash
+./setup.sh                 # full setup, auto-detect (installs & uses zsh)
+./setup.sh --shell bash    # configure bash only, don't install zsh
+./setup.sh --no-chsh -y    # set up zsh but keep your current default shell
+./setup.sh --no-install    # just (re)write configs for already-installed tools
+./setup.sh --dry-run       # preview every action without changing anything
+./setup.sh --help          # full list of options
+```
+
+| Flag | Description |
+|------|-------------|
+| `--shell <auto\|zsh\|bash>` | Which shell to configure (default `auto` → zsh) |
+| `--no-chsh` | Don't change your default login shell |
+| `--no-install` | Configure only; skip installing packages/tools |
+| `-y`, `--yes`, `--unattended` | Don't prompt; assume yes |
+| `-n`, `--dry-run` | Show what would happen, make no changes |
+| `-h`, `--help` | Show help |
+
+> Re-running never duplicates anything: all settings live in
+> `~/.config/terminal-setup/` and are wired into your rc files via a single
+> managed block. Your original `~/.bashrc` / `~/.zshrc` is backed up once to
+> `*.uts-backup`.
+
 ## 🎨 Features
 
 ### 🖼️ Beautiful Terminal Icons
@@ -65,16 +92,18 @@ PowerShell commands auto-completion: `Get-` + `Tab` → `Get-Command`
 
 ## 🛠️ What Gets Installed
 
-### For Linux/WSL:
-- **fzf** - Fuzzy finder for files and command history
-- **Starship** - Beautiful, fast prompt
-- **Zsh + Oh My Zsh** (if Zsh is available)
-- **Zsh plugins**:
+### For Linux / WSL / macOS:
+- **Starship** - the single, fast prompt for both Bash and Zsh. Ships a Nerd-Font-free `starship.toml` so it renders cleanly even on a default WSL terminal.
+- **fzf** - fuzzy finder (Ctrl+R history, Ctrl+T / Ctrl+F files). Key bindings are wired up reliably, even on slim/Docker/imported-WSL images that strip the packaged integration files.
+- **Zsh + Oh My Zsh** with plugins:
   - zsh-autosuggestions
   - zsh-syntax-highlighting
-  - powerlevel10k theme
-- **Git integration** with helpful aliases
-- **Enhanced Bash** configuration (if Zsh not available)
+  - zsh-history-substring-search
+- **Bash** is always configured too (same prompt, aliases, history and fzf bindings), so things work even if you skip Zsh or `chsh` is unavailable.
+- **Git aliases** and sensible shell defaults
+- **WSL integration** - clipboard, opening files/URLs in Windows, browser bridging (see [WSL Specific Issues](#wsl-specific-issues))
+
+All settings live in `~/.config/terminal-setup/` and are wired into your rc files through a single managed block, so re-running is safe and never duplicates configuration.
 
 ### For Windows PowerShell:
 - **Oh My Posh** - Beautiful prompt system
@@ -91,10 +120,11 @@ PowerShell commands auto-completion: `Get-` + `Tab` → `Get-Command`
 
 | Shortcut | Function |
 |----------|----------|
-| `Ctrl + R` | Search command history |
-| `Ctrl + F` | Find files |
+| `Ctrl + R` | Fuzzy-search command history |
+| `Ctrl + T` | Fuzzy-find files into the command line |
+| `Ctrl + F` | Fuzzy-find files (same as Ctrl + T) |
 | `Tab` | Auto-complete commands/paths |
-| `↑/↓` | Navigate command history |
+| `↑/↓` | History substring search (Zsh) |
 
 ## 📋 Git Aliases
 
@@ -105,20 +135,25 @@ gs    # git status
 ga    # git add
 gc    # git commit
 gp    # git push
-gl    # git log --oneline
+gpl   # git pull
+gl    # git log --oneline --graph --decorate
 gd    # git diff
 gb    # git branch
 gco   # git checkout
+gst   # git stash
 ```
 
 ## 🔧 Customization
 
-### Changing Themes
+### Changing the Prompt (Linux / WSL / macOS)
 
-**For Zsh (Linux/WSL):**
+The prompt is **Starship**, configured in `~/.config/starship.toml`. The setup
+ships a clean, Nerd-Font-free config; tweak it freely or start from a preset:
+
 ```bash
-# Edit ~/.zshrc and change the theme line
-ZSH_THEME="powerlevel10k/powerlevel10k"
+# Browse presets at https://starship.rs/presets/
+starship preset nerd-font-symbols -o ~/.config/starship.toml   # needs a Nerd Font
+starship preset plain-text-symbols -o ~/.config/starship.toml  # ASCII only
 ```
 
 **For PowerShell:**
@@ -129,10 +164,11 @@ oh-my-posh init pwsh --config "path/to/your/theme.omp.json" | Invoke-Expression
 
 ### Adding Custom Aliases
 
-**Linux/WSL:**
-Add to `~/.zshrc` or `~/.bashrc`:
+**Linux / WSL / macOS:**
+Put personal tweaks in `~/.config/terminal-setup/local.sh` — it's loaded last by
+both Bash and Zsh and is **never** overwritten when you re-run the setup:
 ```bash
-alias myalias='my command'
+echo "alias myalias='my command'" >> ~/.config/terminal-setup/local.sh
 ```
 
 **PowerShell:**
@@ -167,10 +203,46 @@ sudo apt update && sudo apt install curl git build-essential
 Install Git and PowerShell from their official websites.
 
 ### WSL Specific Issues
-If you're using WSL and encounter font issues, install a Nerd Font in Windows Terminal:
-1. Download a Nerd Font (e.g., FiraCode Nerd Font)
+
+The setup detects WSL automatically (and tells WSL1 from WSL2) and adds a few
+quality-of-life integrations:
+
+**Clipboard & opening things**
+
+| Command | What it does |
+|---------|--------------|
+| `pbcopy` | Pipe text to the Windows clipboard (`echo hi \| pbcopy`) |
+| `pbpaste` | Print the Windows clipboard (CRLF stripped) |
+| `open <path>` / `e [dir]` | Open a file/folder in Windows Explorer |
+| `winhome` | `cd` to your Windows user profile (needs `wslu`) |
+
+URLs open in your Windows browser via `wslview` (`$BROWSER`) when `wslu` is
+installed (`sudo apt install wslu`).
+
+**Fonts** — the prompt is intentionally Nerd-Font-free, so it works out of the
+box. For richer icons, install a Nerd Font and select it in Windows Terminal:
+1. Download a Nerd Font (e.g., FiraCode or CaskaydiaCove Nerd Font)
 2. Install it in Windows
-3. Set it as the font in Windows Terminal settings
+3. Set it in Windows Terminal → Settings → your distro → Appearance → Font
+
+**Slow tab-completion / `$PATH` pollution** — by default WSL appends the entire
+Windows `PATH`, which can make completion sluggish. Disable it by adding this to
+`/etc/wsl.conf`, then run `wsl --shutdown` from Windows:
+```ini
+[interop]
+appendWindowsPath = false
+```
+
+**Still on WSL1?** WSL2 is faster and more compatible. From an elevated Windows
+prompt: `wsl --set-version <distro> 2`.
+
+**CRLF line endings** — if you cloned on Windows and run under WSL, shell scripts
+can break with `bad interpreter` errors. This repo ships a `.gitattributes` that
+forces LF on `*.sh`, and `setup.sh` self-heals if it detects CRLF in itself. To
+fix an already-broken checkout:
+```bash
+sed -i 's/\r$//' setup.sh
+```
 
 ## 🆕 Migration from Old Setup
 

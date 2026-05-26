@@ -35,7 +35,7 @@ Write-ColoredOutput "Method 1: Trying Winget installation..." -Type "Step"
 if (Get-Command winget -ErrorAction SilentlyContinue) {
     try {
         Write-ColoredOutput "Installing Oh My Posh via Winget..." -Type "Info"
-        winget install JanDeLaRepr.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements
+        winget install JanDeDobbeleer.OhMyPosh -s winget --accept-package-agreements --accept-source-agreements
         
         # Refresh PATH
         $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")

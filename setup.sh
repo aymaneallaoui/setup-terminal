@@ -362,6 +362,51 @@ setup_fzf_integration() {
     log_success "fzf integration ready in $dest"
 }
 
+# Materialize fzf shell-integration scripts into $CFG_DIR/fzf so key bindings
+# (Ctrl-R, Ctrl-T) work even when the distro strips the example files (common
+# on slim Docker / imported WSL images) and the binary predates `fzf --bash`.
+setup_fzf_integration() {
+    have fzf || return 0
+    log_step "Preparing fzf shell integration..."
+    if $DRY_RUN; then log_dry "materialize fzf key-bindings/completion into $CFG_DIR/fzf"; return 0; fi
+
+    # Modern fzf (>=0.48) generates integration on the fly; nothing to do.
+    if fzf --bash >/dev/null 2>&1; then
+        log_info "fzf has built-in integration (fzf --bash/--zsh); using that."
+        return 0
+    fi
+
+    local dest="$CFG_DIR/fzf"
+    mkdir -p "$dest"
+    local ver; ver=$(fzf --version 2>/dev/null | awk '{print $1}'); [ -z "$ver" ] && ver="master"
+    local base="https://raw.githubusercontent.com/junegunn/fzf"
+
+    local f src got
+    for f in key-bindings.bash completion.bash key-bindings.zsh completion.zsh; do
+        [ -s "$dest/$f" ] && continue
+        got=""
+        for src in "$HOME/.fzf/shell/$f" \
+                   "/usr/share/doc/fzf/examples/$f" \
+                   "/usr/share/fzf/$f"; do
+            if [ -f "$src" ]; then cp "$src" "$dest/$f"; got=1; break; fi
+        done
+        [ -n "$got" ] && continue
+        # No local copy. Download from upstream unless we're in config-only mode.
+        if [ "$DO_INSTALL" = false ]; then
+            log_info "No local fzf $f and --no-install set; skipping download."
+            continue
+        fi
+        if   curl -fsSL "$base/$ver/shell/$f"   -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        elif curl -fsSL "$base/v$ver/shell/$f"  -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        elif curl -fsSL "$base/master/shell/$f" -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        else
+            rm -f "$dest/$f" 2>/dev/null || true
+            log_info "Could not obtain fzf $f; some bindings may be unavailable."
+        fi
+    done
+    log_success "fzf integration ready in $dest"
+}
+
 # --- Starship ---------------------------------------------------------------
 install_starship() {
     log_step "Setting up Starship prompt..."
@@ -568,7 +613,9 @@ if command -v fzf >/dev/null 2>&1; then
     if fzf --bash >/dev/null 2>&1; then
         eval "$(fzf --bash)"
     else
-        for _f in /usr/share/doc/fzf/examples/key-bindings.bash \
+        for _f in "$HOME/.config/terminal-setup/fzf/key-bindings.bash" \
+                  "$HOME/.config/terminal-setup/fzf/completion.bash" \
+                  /usr/share/doc/fzf/examples/key-bindings.bash \
                   /usr/share/doc/fzf/examples/completion.bash \
                   /usr/share/fzf/key-bindings.bash \
                   /usr/share/fzf/completion.bash \
@@ -629,7 +676,9 @@ if command -v fzf >/dev/null 2>&1; then
     if fzf --zsh >/dev/null 2>&1; then
         source <(fzf --zsh)
     else
-        for _f in /usr/share/doc/fzf/examples/key-bindings.zsh \
+        for _f in "$HOME/.config/terminal-setup/fzf/key-bindings.zsh" \
+                  "$HOME/.config/terminal-setup/fzf/completion.zsh" \
+                  /usr/share/doc/fzf/examples/key-bindings.zsh \
                   /usr/share/doc/fzf/examples/completion.zsh \
                   /usr/share/fzf/key-bindings.zsh \
                   /usr/share/fzf/completion.zsh \
@@ -858,6 +907,9 @@ setup_unix() {
     else
         log_info "--no-install: skipping package/tool installation, configuring only."
     fi
+
+    # Ensure fzf key bindings are available regardless of how fzf was installed.
+    have fzf && setup_fzf_integration
 
     # Always write shared + both shell configs so whichever shell you land in
     # (handy if chsh is skipped or fails) behaves consistently.
