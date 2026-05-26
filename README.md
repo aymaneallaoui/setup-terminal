@@ -59,6 +59,7 @@ iwr -useb https://raw.githubusercontent.com/aymaneallaoui/setup-terminal/master/
 | `--shell <auto\|zsh\|bash>` | Which shell to configure (default `auto` → zsh) |
 | `--no-chsh` | Don't change your default login shell |
 | `--no-install` | Configure only; skip installing packages/tools |
+| `--nerd-font` | Also install FiraCode Nerd Font (native Linux/macOS) |
 | `-y`, `--yes`, `--unattended` | Don't prompt; assume yes |
 | `-n`, `--dry-run` | Show what would happen, make no changes |
 | `-h`, `--help` | Show help |
@@ -125,6 +126,27 @@ All settings live in `~/.config/terminal-setup/` and are wired into your rc file
 | `Ctrl + F` | Fuzzy-find files (same as Ctrl + T) |
 | `Tab` | Auto-complete commands/paths |
 | `↑/↓` | History substring search (Zsh) |
+
+## 📋 Clipboard & Opening Files
+
+`pbcopy`, `pbpaste`, and `open` / `e` work the same on every platform — the
+backend is picked automatically at runtime, so the same config is portable
+across machines:
+
+| Platform | Clipboard | Open files/URLs |
+|----------|-----------|-----------------|
+| WSL | `clip.exe` / PowerShell | `explorer.exe`, `wslview` |
+| Linux (Wayland) | `wl-copy` / `wl-paste` | `xdg-open` |
+| Linux (X11) | `xclip` or `xsel` | `xdg-open` |
+| macOS | native | native `open` |
+
+On a headless server with none of these tools, the helpers simply stay
+undefined (no errors). To enable them on a Linux desktop:
+
+```bash
+sudo apt install wl-clipboard   # Wayland sessions
+sudo apt install xclip          # X11 sessions
+```
 
 ## 📋 Git Aliases
 
@@ -207,17 +229,11 @@ Install Git and PowerShell from their official websites.
 The setup detects WSL automatically (and tells WSL1 from WSL2) and adds a few
 quality-of-life integrations:
 
-**Clipboard & opening things**
-
-| Command | What it does |
-|---------|--------------|
-| `pbcopy` | Pipe text to the Windows clipboard (`echo hi \| pbcopy`) |
-| `pbpaste` | Print the Windows clipboard (CRLF stripped) |
-| `open <path>` / `e [dir]` | Open a file/folder in Windows Explorer |
-| `winhome` | `cd` to your Windows user profile (needs `wslu`) |
-
-URLs open in your Windows browser via `wslview` (`$BROWSER`) when `wslu` is
-installed (`sudo apt install wslu`).
+**Clipboard & opening things** — `pbcopy` / `pbpaste` are bridged to the Windows
+clipboard and `open` / `e` open files in Explorer (see the
+[Clipboard & Opening Files](#-clipboard--opening-files) table). URLs open in your
+Windows browser via `wslview` (`$BROWSER`) when `wslu` is installed
+(`sudo apt install wslu`), and `winhome` jumps to your Windows user profile.
 
 **Fonts** — the prompt is intentionally Nerd-Font-free, so it works out of the
 box. For richer icons, install a Nerd Font and select it in Windows Terminal:

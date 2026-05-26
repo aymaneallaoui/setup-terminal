@@ -40,6 +40,7 @@ UNATTENDED=false
 DO_CHSH=true
 DO_INSTALL=true         # install packages + tools; false = configure only
 ASSUME_YES=false
+NERD_FONT=false         # opt-in Nerd Font install (native Linux/macOS)
 
 # --- Colors ----------------------------------------------------------------
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
@@ -427,6 +428,49 @@ install_starship() {
     fi
 }
 
+# --- Nerd Font (optional) ---------------------------------------------------
+# On WSL the terminal font lives on the Windows side, so this is a native
+# Linux / macOS feature. Opt in with --nerd-font.
+install_nerd_font() {
+    $NERD_FONT || return 0
+    if is_wsl; then
+        log_info "Nerd Font: on WSL, install one on Windows and pick it in your terminal; skipping."
+        return 0
+    fi
+    log_step "Installing FiraCode Nerd Font..."
+    if $DRY_RUN; then log_dry "download + install FiraCode Nerd Font"; return 0; fi
+
+    if [ "$(detect_os)" = "macos" ]; then
+        if have brew; then
+            brew install --cask font-fira-code-nerd-font >/dev/null 2>&1 \
+                && log_success "FiraCode Nerd Font installed via Homebrew." \
+                || log_warning "Could not install Nerd Font via Homebrew."
+        else
+            log_warning "Homebrew unavailable; install a Nerd Font manually."
+        fi
+        return 0
+    fi
+
+    if ! have unzip; then
+        log_warning "unzip not found; cannot install the font. Install 'unzip' and re-run with --nerd-font."
+        return 1
+    fi
+    local font_dir="${XDG_DATA_HOME:-$HOME/.local/share}/fonts/FiraCodeNerdFont"
+    local tmp; tmp=$(mktemp -d 2>/dev/null || echo "/tmp/nf.$$")
+    mkdir -p "$font_dir"
+    if retry curl -fsSL -o "$tmp/FiraCode.zip" \
+            https://github.com/ryanoasis/nerd-fonts/releases/latest/download/FiraCode.zip; then
+        unzip -oq "$tmp/FiraCode.zip" '*.ttf' -d "$font_dir" 2>/dev/null \
+            || unzip -oq "$tmp/FiraCode.zip" -d "$font_dir" 2>/dev/null
+        have fc-cache && fc-cache -f "$font_dir" >/dev/null 2>&1
+        log_success "FiraCode Nerd Font installed to $font_dir"
+        log_info "Select 'FiraCode Nerd Font' in your terminal's font settings for full icons."
+    else
+        log_warning "Could not download the Nerd Font; skipping."
+    fi
+    rm -rf "$tmp" 2>/dev/null || true
+}
+
 # --- Oh My Zsh + plugins ----------------------------------------------------
 install_oh_my_zsh() {
     log_step "Setting up Oh My Zsh..."
@@ -545,42 +589,63 @@ if command -v fzf >/dev/null 2>&1; then
     export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --info=inline'
 fi
 
+# --- Cross-platform clipboard / open helpers --------------------------------
+# pbcopy / pbpaste / open behave the same everywhere; the backend is chosen at
+# runtime, so this config is portable across WSL, X11, Wayland and macOS.
+if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then
+    # WSL: bridge to Windows.
+    command -v clip.exe >/dev/null 2>&1 && alias pbcopy='clip.exe'
+    if command -v powershell.exe >/dev/null 2>&1; then
+        pbpaste() { powershell.exe -NoProfile -Command Get-Clipboard 2>/dev/null | sed 's/\r$//'; }
+    fi
+    if command -v explorer.exe >/dev/null 2>&1; then
+        alias open='explorer.exe'
+        e() { explorer.exe "${1:-.}"; }
+    fi
+    if command -v wslview >/dev/null 2>&1; then
+        export BROWSER=wslview
+        alias xdg-open='wslview'
+    fi
+    winhome() {
+        if command -v wslvar >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+            cd "$(wslpath "$(wslvar USERPROFILE 2>/dev/null)")" || return 1
+        else
+            echo "winhome requires wslu:  sudo apt install wslu" >&2; return 1
+        fi
+    }
+elif command -v pbcopy >/dev/null 2>&1; then
+    : # macOS already provides pbcopy / pbpaste / open.
+else
+    # Native Linux: prefer Wayland, fall back to X11. No-ops on a headless box.
+    if command -v wl-copy >/dev/null 2>&1; then
+        alias pbcopy='wl-copy'
+        command -v wl-paste >/dev/null 2>&1 && alias pbpaste='wl-paste --no-newline'
+    elif command -v xclip >/dev/null 2>&1; then
+        alias pbcopy='xclip -selection clipboard'
+        alias pbpaste='xclip -selection clipboard -o'
+    elif command -v xsel >/dev/null 2>&1; then
+        alias pbcopy='xsel --clipboard --input'
+        alias pbpaste='xsel --clipboard --output'
+    fi
+    if command -v xdg-open >/dev/null 2>&1; then
+        open() { xdg-open "${@:-.}" >/dev/null 2>&1; }
+        e() { xdg-open "${1:-.}" >/dev/null 2>&1; }
+    fi
+fi
+
+# Use modern tools under their conventional names when only the Debian-renamed
+# binaries are installed (fdfind -> fd, batcat -> bat).
+if ! command -v fd >/dev/null 2>&1 && command -v fdfind >/dev/null 2>&1; then
+    alias fd='fdfind'
+fi
+if ! command -v bat >/dev/null 2>&1 && command -v batcat >/dev/null 2>&1; then
+    alias bat='batcat'
+fi
+
 # Personal overrides, loaded last so they always win.
 [ -f "$HOME/.config/terminal-setup/local.sh" ] && . "$HOME/.config/terminal-setup/local.sh"
 EOF
 
-    # WSL-specific integration, appended only on WSL.
-    if is_wsl; then
-        append_file "$CFG_DIR/common.sh" <<'EOF'
-
-# --- WSL integration -------------------------------------------------------
-# Clipboard: pbcopy/pbpaste like macOS, bridged to Windows.
-if command -v clip.exe >/dev/null 2>&1; then
-    alias pbcopy='clip.exe'
-fi
-if command -v powershell.exe >/dev/null 2>&1; then
-    pbpaste() { powershell.exe -NoProfile -Command Get-Clipboard 2>/dev/null | sed 's/\r$//'; }
-fi
-# Open files / folders / URLs with Windows.
-if command -v explorer.exe >/dev/null 2>&1; then
-    alias open='explorer.exe'
-    e() { explorer.exe "${1:-.}"; }
-fi
-if command -v wslview >/dev/null 2>&1; then
-    export BROWSER=wslview
-    alias xdg-open='wslview'
-fi
-# Jump to the Windows user profile (needs wslu's wslvar).
-winhome() {
-    if command -v wslvar >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
-        cd "$(wslpath "$(wslvar USERPROFILE 2>/dev/null)")" || return 1
-    else
-        echo "winhome requires wslu:  sudo apt install wslu" >&2
-        return 1
-    fi
-}
-EOF
-    fi
     log_success "Shared config written to $CFG_DIR/common.sh"
 }
 
@@ -904,6 +969,7 @@ setup_unix() {
             install_oh_my_zsh   || true
             install_zsh_plugins || true
         fi
+        install_nerd_font || true
     else
         log_info "--no-install: skipping package/tool installation, configuring only."
     fi
@@ -962,6 +1028,7 @@ Options:
   --shell <auto|zsh|bash>   Which shell to configure (default: auto => zsh).
   --no-chsh                 Don't change the default login shell.
   --no-install              Configure only; skip installing packages/tools.
+  --nerd-font               Also install FiraCode Nerd Font (Linux/macOS).
   -y, --yes, --unattended   Don't prompt; assume yes to all questions.
   -n, --dry-run             Show what would happen without making changes.
   -h, --help                Show this help.
@@ -990,6 +1057,7 @@ parse_args() {
                 case "$SHELL_CHOICE" in auto|zsh|bash) ;; *) log_error "Invalid --shell value."; exit 2 ;; esac ;;
             --no-chsh)    DO_CHSH=false ;;
             --no-install) DO_INSTALL=false ;;
+            --nerd-font)  NERD_FONT=true ;;
             -y|--yes|--unattended) UNATTENDED=true; ASSUME_YES=true ;;
             -n|--dry-run) DRY_RUN=true ;;
             -h|--help)    usage; exit 0 ;;
