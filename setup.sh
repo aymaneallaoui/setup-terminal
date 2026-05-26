@@ -1,603 +1,977 @@
 #!/usr/bin/env bash
+#
+# Universal Terminal Setup - Linux / WSL / macOS
+#
+# A robust, idempotent, one-run setup for a modern shell experience:
+#   - Starship prompt (single, fast, Nerd-Font-free config)
+#   - fzf fuzzy finder (Ctrl-R history, Ctrl-T / Ctrl-F files)
+#   - zsh + Oh My Zsh (autosuggestions, syntax highlighting, history search)
+#   - Sensible bash fallback with the same goodies
+#   - First-class WSL integration (clipboard, explorer, browser, fonts)
+#
+# Re-running is safe: configuration lives in ~/.config/terminal-setup/* and is
+# wired into your rc files through a single managed block, so nothing is
+# duplicated and your own customizations are preserved.
+#
+# Usage:  ./setup.sh [options]   (run  ./setup.sh --help  for the full list)
 
-# Universal Terminal Setup Script
-# Supports both Windows PowerShell and Linux/WSL environments
-# Author: Enhanced by Claude for aymaneallaoui/setup-terminal
+# --- Strict-ish mode -------------------------------------------------------
+# We intentionally avoid `set -e`: an installer should survive an optional
+# component failing (e.g. no network for fzf) and still configure the shells.
+set -uo pipefail
 
-set -e  # Exit on any error
+VERSION="2.0.0"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# Logging functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-log_step() {
-    echo -e "${PURPLE}[STEP]${NC} $1"
-}
-
-# Check if running as root
-is_root() {
-    [[ $EUID -eq 0 ]]
-}
-
-# Execute command with or without sudo based on current user
-execute_as_needed() {
-    if is_root; then
-        "$@"
-    else
-        sudo "$@"
-    fi
-}
-
-# Detect environment
-detect_environment() {
-    if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ -n "$WSLENV" ]]; then
-        if [[ -n "$WSLENV" ]]; then
-            echo "wsl"
-        else
-            echo "windows"
-        fi
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        echo "linux"
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        echo "macos"
-    else
-        echo "unknown"
-    fi
-}
-
-# Check if running in PowerShell
-is_powershell() {
-    [[ -n "$PSVersionTable" ]] || [[ -n "$PSHOME" ]]
-}
-
-# Install packages based on distribution
-install_linux_packages() {
-    log_step "Installing Linux packages..."
-    
-    if is_root; then
-        log_info "Running as root - no sudo needed"
-    else
-        log_info "Running as regular user - will use sudo"
-    fi
-    
-    if command -v apt-get &> /dev/null; then
-        # Debian/Ubuntu
-        execute_as_needed apt-get update
-        execute_as_needed apt-get install -y curl git build-essential fontconfig zsh openssh-client
-    elif command -v yum &> /dev/null; then
-        # RedHat/CentOS
-        execute_as_needed yum update -y
-        execute_as_needed yum install -y curl git gcc make fontconfig zsh openssh-clients
-    elif command -v pacman &> /dev/null; then
-        # Arch Linux
-        execute_as_needed pacman -Syu --noconfirm
-        execute_as_needed pacman -S --noconfirm curl git base-devel fontconfig zsh openssh
-    elif command -v dnf &> /dev/null; then
-        # Fedora
-        execute_as_needed dnf update -y
-        execute_as_needed dnf install -y curl git gcc make fontconfig zsh openssh-clients
-    elif command -v zypper &> /dev/null; then
-        # openSUSE
-        execute_as_needed zypper refresh
-        execute_as_needed zypper install -y curl git gcc make fontconfig zsh openssh
-    elif command -v apk &> /dev/null; then
-        # Alpine Linux
-        execute_as_needed apk update
-        execute_as_needed apk add curl git build-base fontconfig zsh openssh-client
-    else
-        log_warning "Unknown package manager. Please install curl, git, and build tools manually."
-    fi
-}
-
-# Install fzf
-install_fzf() {
-    log_step "Installing fzf..."
-    
-    if ! command -v fzf &> /dev/null; then
-        if [[ -d ~/.fzf ]]; then
-            log_info "fzf directory exists, updating..."
-            cd ~/.fzf && git pull
-        else
-            # Force HTTPS for git clone to avoid SSH issues
-            log_info "Cloning fzf repository..."
-            git -c url."https://github.com/".insteadOf="git@github.com:" clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
-        fi
-        ~/.fzf/install --all --no-bash --no-zsh --no-fish
-        log_success "fzf installed successfully"
-    else
-        log_info "fzf is already installed"
-    fi
-}
-
-# Install Oh My Zsh
-install_oh_my_zsh() {
-    log_step "Installing Oh My Zsh..."
-    
-    if [[ ! -d ~/.oh-my-zsh ]]; then
-        sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-        log_success "Oh My Zsh installed successfully"
-    else
-        log_info "Oh My Zsh is already installed"
-    fi
-}
-
-# Install Starship prompt
-install_starship() {
-    log_step "Installing Starship prompt..."
-    
-    if ! command -v starship &> /dev/null; then
-        curl -sS https://starship.rs/install.sh | sh -s -- -y
-        log_success "Starship installed successfully"
-    else
-        log_info "Starship is already installed"
-    fi
-}
-
-# Install Zsh plugins
-install_zsh_plugins() {
-    log_step "Installing Zsh plugins..."
-    
-    local ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
-    
-    # zsh-autosuggestions
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]]; then
-        git -c url."https://github.com/".insteadOf="git@github.com:" clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
-    fi
-    
-    # zsh-syntax-highlighting
-    if [[ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]]; then
-        git -c url."https://github.com/".insteadOf="git@github.com:" clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
-    fi
-    
-    # powerlevel10k theme
-    if [[ ! -d "$ZSH_CUSTOM/themes/powerlevel10k" ]]; then
-        git -c url."https://github.com/".insteadOf="git@github.com:" clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$ZSH_CUSTOM/themes/powerlevel10k"
-    fi
-    
-    log_success "Zsh plugins installed successfully"
-}
-
-# Configure Zsh
-configure_zsh() {
-    log_step "Configuring Zsh..."
-    
-    # Backup existing .zshrc
-    if [[ -f ~/.zshrc ]]; then
-        cp ~/.zshrc ~/.zshrc.backup.$(date +%Y%m%d_%H%M%S)
-    fi
-    
-    # Create new .zshrc
-    cat > ~/.zshrc << 'EOF'
-# Path to your oh-my-zsh installation
-export ZSH="$HOME/.oh-my-zsh"
-
-# Theme
-ZSH_THEME="powerlevel10k/powerlevel10k"
-
-# Plugins
-plugins=(
-    git
-    zsh-autosuggestions
-    zsh-syntax-highlighting
-    colored-man-pages
-    command-not-found
-    history-substring-search
-)
-
-source $ZSH/oh-my-zsh.sh
-
-# User configuration
-export EDITOR='nano'
-export LANG=en_US.UTF-8
-
-# Aliases
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'
-
-# Git aliases
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline'
-alias gd='git diff'
-alias gb='git branch'
-alias gco='git checkout'
-
-# fzf integration
-if command -v fzf &> /dev/null; then
-    source ~/.fzf.zsh
-    export FZF_DEFAULT_COMMAND='find . -type f -not -path "*/\.git/*" -not -path "*/node_modules/*"'
-    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-    export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
+# --- CRLF guard ------------------------------------------------------------
+# If this file was checked out on Windows with CRLF endings and then run under
+# WSL/Linux, bash mis-parses every line. Detect it and re-exec a sanitized copy.
+__self="${BASH_SOURCE[0]:-}"
+if [ -n "$__self" ] && [ -f "$__self" ] && LC_ALL=C grep -q $'\r' "$__self" 2>/dev/null; then
+    __fixed="$(mktemp 2>/dev/null || echo "/tmp/setup.$$.sh")"
+    sed 's/\r$//' "$__self" > "$__fixed"
+    chmod +x "$__fixed" 2>/dev/null || true
+    exec bash "$__fixed" "$@"
 fi
 
-# Starship prompt (if available)
-if command -v starship &> /dev/null; then
-    eval "$(starship init zsh)"
+# --- Options (defaults) ----------------------------------------------------
+SHELL_CHOICE="auto"     # auto | zsh | bash
+DRY_RUN=false
+UNATTENDED=false
+DO_CHSH=true
+DO_INSTALL=true         # install packages + tools; false = configure only
+ASSUME_YES=false
+
+# --- Colors ----------------------------------------------------------------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+    RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'; PURPLE='\033[0;35m'; CYAN='\033[0;36m'; NC='\033[0m'
+else
+    RED=''; GREEN=''; YELLOW=''; BLUE=''; PURPLE=''; CYAN=''; NC=''
 fi
 
-# History configuration
-HISTSIZE=10000
-SAVEHIST=10000
-setopt HIST_VERIFY
-setopt SHARE_HISTORY
-setopt APPEND_HISTORY
-setopt INC_APPEND_HISTORY
-setopt HIST_IGNORE_DUPS
-setopt HIST_IGNORE_ALL_DUPS
-setopt HIST_REDUCE_BLANKS
-setopt HIST_IGNORE_SPACE
+log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[ OK ]${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[WARN]${NC} $1" >&2; }
+log_error()   { echo -e "${RED}[FAIL]${NC} $1" >&2; }
+log_step()    { echo -e "${PURPLE}[STEP]${NC} $1"; }
+log_dry()     { echo -e "${CYAN}[DRY]${NC} $1"; }
 
-# Key bindings
-bindkey '^R' history-incremental-search-backward
-bindkey '^F' fzf-file-widget
+have() { command -v "$1" >/dev/null 2>&1; }
 
-# Auto completion
-autoload -U compinit
-compinit
-
-# Case insensitive completion
-zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
-EOF
-
-    log_success "Zsh configuration completed"
-}
-
-# Configure Bash
-configure_bash() {
-    log_step "Configuring Bash..."
-    
-    # Backup existing .bashrc
-    if [[ -f ~/.bashrc ]]; then
-        cp ~/.bashrc ~/.bashrc.backup.$(date +%Y%m%d_%H%M%S)
-    fi
-    
-    # Add configuration to .bashrc
-    cat >> ~/.bashrc << 'EOF'
-
-# Terminal Setup Configuration
-export EDITOR='nano'
-export LANG=en_US.UTF-8
-
-# Enhanced history
-HISTSIZE=10000
-HISTFILESIZE=20000
-HISTCONTROL=ignoreboth
-shopt -s histappend
-shopt -s checkwinsize
-
-# Aliases
-alias ll='ls -alF'
-alias la='ls -A'
-alias l='ls -CF'
-alias grep='grep --color=auto'
-alias fgrep='fgrep --color=auto'
-alias egrep='egrep --color=auto'
-
-# Git aliases
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline'
-alias gd='git diff'
-alias gb='git branch'
-alias gco='git checkout'
-
-# fzf integration
-if command -v fzf &> /dev/null; then
-    source ~/.fzf.bash
-    export FZF_DEFAULT_COMMAND='find . -type f -not -path "*/\.git/*" -not -path "*/node_modules/*"'
-    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-    export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
-    
-    # Key bindings
-    bind '"\C-f": "fzf-file-widget\n"'
-    bind '"\C-r": "\C-a fzf-history-widget\n"'
-fi
-
-# Starship prompt (if available)
-if command -v starship &> /dev/null; then
-    eval "$(starship init bash)"
-fi
-
-# Enable programmable completion features
-if ! shopt -oq posix; then
-  if [ -f /usr/share/bash-completion/bash_completion ]; then
-    . /usr/share/bash-completion/bash_completion
-  elif [ -f /etc/bash_completion ]; then
-    . /etc/bash_completion
-  fi
-fi
-EOF
-
-    log_success "Bash configuration completed"
-}
-
-# Setup Linux/WSL environment
-setup_linux() {
-    log_info "Setting up Linux/WSL environment..."
-    
-    install_linux_packages
-    install_fzf
-    install_starship
-    
-    # Detect and setup shell
-    if command -v zsh &> /dev/null; then
-        log_info "Zsh detected, setting up Zsh configuration..."
-        install_oh_my_zsh
-        install_zsh_plugins
-        configure_zsh
-        
-        # Change default shell to zsh if not already (and not root)
-        if [[ "$SHELL" != *"zsh"* ]] && ! is_root; then
-            log_step "Changing default shell to Zsh..."
-            chsh -s $(which zsh)
-            log_success "Default shell changed to Zsh. Please restart your terminal."
-        elif is_root; then
-            log_info "Running as root - shell change skipped. You can manually switch to zsh."
-        fi
-    else
-        log_info "Setting up Bash configuration..."
-        configure_bash
-    fi
-    
-    log_success "Linux/WSL setup completed!"
-}
-
-# Setup PowerShell environment (for Windows or WSL with PowerShell)
-setup_powershell() {
-    log_info "Setting up PowerShell environment..."
-    
-    # Create PowerShell script for Windows setup
-    cat > setup_powershell.ps1 << 'EOF'
-# PowerShell Terminal Setup Script
-
-Write-Host "Setting up PowerShell environment..." -ForegroundColor Cyan
-
-# Set execution policy
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-
-# Install required modules
-$modules = @(
-    'PSReadLine',
-    'Terminal-Icons',
-    'Posh-Git',
-    'PSFzf'
-)
-
-foreach ($module in $modules) {
-    if (!(Get-Module -ListAvailable -Name $module)) {
-        Write-Host "Installing $module..." -ForegroundColor Yellow
-        Install-Module -Name $module -Repository PSGallery -Force -AllowClobber
-    } else {
-        Write-Host "$module already installed" -ForegroundColor Green
-    }
-}
-
-# Install Oh My Posh
-if (!(Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing Oh My Posh..." -ForegroundColor Yellow
-    winget install JanDeLaRepr.OhMyPosh -s winget
-} else {
-    Write-Host "Oh My Posh already installed" -ForegroundColor Green
-}
-
-# Install Scoop if not installed
-if (!(Get-Command scoop -ErrorAction SilentlyContinue)) {
-    Write-Host "Installing Scoop..." -ForegroundColor Yellow
-    iex ((New-Object System.Net.WebClient).DownloadString('https://get.scoop.sh'))
-} else {
-    Write-Host "Scoop already installed" -ForegroundColor Green
-}
-
-# Install fzf using Scoop
-scoop install fzf
-
-# Create PowerShell profile directory if it doesn't exist
-$profileDir = Split-Path $PROFILE
-if (!(Test-Path $profileDir)) {
-    New-Item -ItemType Directory -Path $profileDir -Force
-}
-
-# Create or update PowerShell profile
-$profileContent = @'
-# PowerShell Profile Configuration
-
-# Import modules
-Import-Module PSReadLine
-Import-Module Terminal-Icons
-Import-Module Posh-Git
-Import-Module PSFzf
-
-# PSReadLine configuration
-Set-PSReadLineOption -PredictionViewStyle ListView
-Set-PSReadLineOption -PredictionSource History
-Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-Set-PSReadLineKeyHandler -Key "Ctrl+f" -Function ForwardWord
-Set-PSReadLineKeyHandler -Key "Ctrl+r" -ScriptBlock {
-    Invoke-FzfPsReadlineHandlerHistory
-}
-
-# PSFzf configuration
-Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+f' -PSReadlineChordReverseHistory 'Ctrl+r'
-
-# Oh My Posh initialization
-oh-my-posh init pwsh --config "$env:USERPROFILE\AppData\Local\Programs\oh-my-posh\themes\montys.omp.json" | Invoke-Expression
-
-# Aliases
-Set-Alias ll Get-ChildItem
-Set-Alias l Get-ChildItem
-function la { Get-ChildItem -Force }
-function ll { Get-ChildItem -Format Wide }
-
-# Git aliases
-function gs { git status }
-function ga { git add $args }
-function gc { git commit $args }
-function gp { git push }
-function gl { git log --oneline }
-function gd { git diff }
-function gb { git branch }
-function gco { git checkout $args }
-
-# Useful functions
-function which($command) {
-    Get-Command -Name $command -ErrorAction SilentlyContinue | 
-    Select-Object -ExpandProperty Path -ErrorAction SilentlyContinue
-}
-
-function grep($regex, $dir) {
-    if ( $dir ) {
-        Get-ChildItem $dir | select-string $regex
-        return
-    }
-    $input | select-string $regex
-}
-
-function touch($file) { "" | Out-File $file -Encoding ASCII }
-
-function df {
-    get-volume
-}
-
-function sed($file, $find, $replace) {
-    (Get-Content $file).replace("$find", $replace) | Set-Content $file
-}
-
-function export($name, $value) {
-    set-item -force -path "env:$name" -value $value;
-}
-
-function pkill($name) {
-    Get-Process $name -ErrorAction SilentlyContinue | Stop-Process
-}
-
-function pgrep($name) {
-    Get-Process $name
-}
-
-Write-Host "PowerShell profile loaded successfully!" -ForegroundColor Green
-'@
-
-    $profileContent | Out-File -FilePath $PROFILE -Encoding UTF8 -Force
-
-    Write-Host "PowerShell setup completed!" -ForegroundColor Green
-    Write-Host "Please restart PowerShell to apply changes." -ForegroundColor Yellow
-EOF
-
-    # Execute the PowerShell script
-    if command -v pwsh &> /dev/null; then
-        pwsh -ExecutionPolicy Bypass -File setup_powershell.ps1
-    elif command -v powershell &> /dev/null; then
-        powershell -ExecutionPolicy Bypass -File setup_powershell.ps1
-    else
-        log_warning "PowerShell not found. Please install PowerShell and run setup_powershell.ps1 manually."
-    fi
-    
-    # Cleanup
-    rm -f setup_powershell.ps1
-    
-    log_success "PowerShell setup completed!"
-}
-
-# Main function
-main() {
-    echo -e "${CYAN}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                    Universal Terminal Setup                   ║"
-    echo "║                     Enhanced by Claude                        ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-    
-    local env=$(detect_environment)
-    log_info "Detected environment: $env"
-    
-    case $env in
-        "linux"|"wsl")
-            setup_linux
-            # Also setup PowerShell if available in WSL
-            if [[ "$env" == "wsl" ]] && (command -v pwsh &> /dev/null || command -v powershell &> /dev/null); then
-                log_info "PowerShell detected in WSL, setting up PowerShell configuration as well..."
-                setup_powershell
-            fi
-            ;;
-        "windows")
-            setup_powershell
-            ;;
-        "macos")
-            log_info "macOS detected. Using Linux setup with homebrew modifications..."
-            # Install homebrew if not present
-            if ! command -v brew &> /dev/null; then
-                log_step "Installing Homebrew..."
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            fi
-            # Use similar setup to Linux but with brew
-            setup_linux
-            ;;
+# --- Environment detection -------------------------------------------------
+detect_os() {
+    case "${OSTYPE:-}" in
+        linux-gnu*|linux-musl*) echo "linux" ;;
+        darwin*)                echo "macos" ;;
+        msys|cygwin|win32)      echo "windows" ;;
         *)
-            log_error "Unsupported environment: $env"
-            exit 1
+            # OSTYPE can be empty under sh-launched bash; fall back to uname.
+            case "$(uname -s 2>/dev/null)" in
+                Linux)  echo "linux" ;;
+                Darwin) echo "macos" ;;
+                MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+                *) echo "unknown" ;;
+            esac
             ;;
     esac
-    
-    echo -e "${GREEN}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                     Setup Complete!                          ║"
-    echo "║                                                               ║"
-    echo "║  Please restart your terminal or run 'source ~/.bashrc'      ║"
-    echo "║  or 'source ~/.zshrc' to apply the changes.                  ║"
-    echo "║                                                               ║"
-    echo "║  Features installed:                                          ║"
-    echo "║  • Enhanced command history (Ctrl+R)                         ║"
-    echo "║  • File finder with fzf (Ctrl+F)                             ║"
-    echo "║  • Git integration and aliases                                ║"
-    echo "║  • Auto-completion and syntax highlighting                    ║"
-    echo "║  • Beautiful prompt with git status                          ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
-    
-    # Special message for root users
+}
+
+is_wsl() {
+    [ -n "${WSL_DISTRO_NAME:-}" ] && return 0
+    [ -n "${WSLENV:-}" ] && return 0
+    case "$(uname -r 2>/dev/null)" in *icrosoft*|*WSL*) return 0 ;; esac
+    grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null && return 0
+    [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] && return 0
+    return 1
+}
+
+# Echoes 1 (WSL1), 2 (WSL2), or 0 (not WSL)
+wsl_version() {
+    is_wsl || { echo 0; return; }
+    case "$(uname -r 2>/dev/null)" in
+        *WSL2*|*wsl2*) echo 2 ;;
+        *icrosoft*)    echo 1 ;;   # WSL1 kernel string is "...-Microsoft"
+        *)             echo 2 ;;   # modern default
+    esac
+}
+
+is_root() { [ "$(id -u 2>/dev/null || echo 0)" -eq 0 ]; }
+
+# Run a command as root when needed (root => direct, else sudo, else fail).
+as_root() {
     if is_root; then
-        echo -e "${YELLOW}"
-        echo "╔═══════════════════════════════════════════════════════════════╗"
-        echo "║                    Running as Root                           ║"
-        echo "║                                                               ║"
-        echo "║  You're running as root. To use zsh, simply run: zsh         ║"
-        echo "║  To make zsh your default shell, run: chsh -s /bin/zsh       ║"
-        echo "║                                                               ║"
-        echo "║  For security, consider creating a regular user account.     ║"
-        echo "╚═══════════════════════════════════════════════════════════════╝"
-        echo -e "${NC}"
+        "$@"
+    elif have sudo; then
+        sudo "$@"
+    else
+        log_error "This step needs root privileges but neither root nor sudo is available: $*"
+        return 1
     fi
 }
 
-# Run main function
+# Retry a command with exponential backoff (for flaky network operations).
+retry() {
+    local n=0 max=4 delay=2
+    until "$@"; do
+        n=$((n + 1))
+        if [ "$n" -ge "$max" ]; then
+            return 1
+        fi
+        log_warning "Retry $n/$max in ${delay}s..."
+        sleep "$delay"
+        delay=$((delay * 2))
+    done
+}
+
+confirm() {
+    # confirm "<question>"  -> 0 yes / 1 no. Auto-yes when unattended/non-tty.
+    $ASSUME_YES && return 0
+    $UNATTENDED && return 0
+    [ -t 0 ] || return 0
+    local reply
+    read -r -p "$1 [Y/n] " reply
+    case "$reply" in [nN]*) return 1 ;; *) return 0 ;; esac
+}
+
+# --- File helpers (DRY_RUN aware) ------------------------------------------
+CFG_DIR="$HOME/.config/terminal-setup"
+BLOCK_BEGIN="# >>> universal-terminal-setup >>>"
+BLOCK_END="# <<< universal-terminal-setup <<<"
+
+write_file() {
+    # write_file <dest>   (content on stdin, overwrites)
+    local dest="$1"
+    if $DRY_RUN; then
+        local n; n=$(cat | wc -l)
+        log_dry "write $dest (${n} lines)"
+        return 0
+    fi
+    mkdir -p "$(dirname "$dest")"
+    cat > "$dest.uts.tmp" && mv "$dest.uts.tmp" "$dest"
+}
+
+append_file() {
+    # append_file <dest>  (content on stdin, appends)
+    local dest="$1"
+    if $DRY_RUN; then
+        cat >/dev/null
+        log_dry "append to $dest"
+        return 0
+    fi
+    mkdir -p "$(dirname "$dest")"
+    cat >> "$dest"
+}
+
+backup_once() {
+    # Back up a file a single time (preserves the user's pristine original).
+    local f="$1"
+    $DRY_RUN && return 0
+    if [ -f "$f" ] && [ ! -f "$f.uts-backup" ]; then
+        cp "$f" "$f.uts-backup"
+        log_info "Backed up $f -> $f.uts-backup"
+    fi
+}
+
+ensure_block() {
+    # ensure_block <rcfile> <body>
+    # Idempotently insert <body> between managed markers (replacing any
+    # previous managed block). Never duplicates on re-run.
+    local rc="$1" body="$2"
+    if $DRY_RUN; then
+        log_dry "ensure managed block in $rc"
+        return 0
+    fi
+    backup_once "$rc"
+    mkdir -p "$(dirname "$rc")"
+    touch "$rc"
+    if grep -qF "$BLOCK_BEGIN" "$rc" 2>/dev/null; then
+        awk -v b="$BLOCK_BEGIN" -v e="$BLOCK_END" '
+            $0==b {skip=1}
+            skip==0 {print}
+            $0==e {skip=0}
+        ' "$rc" > "$rc.uts.tmp" && mv "$rc.uts.tmp" "$rc"
+    fi
+    {
+        printf '\n%s\n' "$BLOCK_BEGIN"
+        printf '%s\n' "$body"
+        printf '%s\n' "$BLOCK_END"
+    } >> "$rc"
+    log_success "Wired managed block into $rc"
+}
+
+# --- Package installation --------------------------------------------------
+PKG_MGR=""
+detect_pkg_mgr() {
+    for m in apt-get dnf yum pacman zypper apk brew; do
+        if have "$m"; then PKG_MGR="$m"; return 0; fi
+    done
+    PKG_MGR=""
+    return 1
+}
+
+# Install a list of packages, tolerating individual failures.
+pkg_install() {
+    local pkgs=("$@")
+    [ "${#pkgs[@]}" -eq 0 ] && return 0
+    if $DRY_RUN; then
+        log_dry "install packages: ${pkgs[*]}  (via ${PKG_MGR:-none})"
+        return 0
+    fi
+    case "$PKG_MGR" in
+        apt-get) as_root apt-get install -y --no-install-recommends "${pkgs[@]}" ;;
+        dnf)     as_root dnf install -y "${pkgs[@]}" ;;
+        yum)     as_root yum install -y "${pkgs[@]}" ;;
+        pacman)  as_root pacman -S --needed --noconfirm "${pkgs[@]}" ;;
+        zypper)  as_root zypper --non-interactive install "${pkgs[@]}" ;;
+        apk)     as_root apk add "${pkgs[@]}" ;;
+        brew)    brew install "${pkgs[@]}" ;;
+        *)       log_warning "No known package manager; please install manually: ${pkgs[*]}"; return 1 ;;
+    esac
+}
+
+# Refresh package metadata once (not a full system upgrade -- that would be
+# slow and risky as a side effect of a terminal setup).
+pkg_refresh() {
+    if $DRY_RUN; then log_dry "refresh package metadata (${PKG_MGR:-none})"; return 0; fi
+    case "$PKG_MGR" in
+        apt-get) as_root apt-get update -y ;;
+        dnf)     as_root dnf makecache -y 2>/dev/null || true ;;
+        yum)     as_root yum makecache -y 2>/dev/null || true ;;
+        pacman)  as_root pacman -Sy --noconfirm ;;
+        zypper)  as_root zypper --non-interactive refresh ;;
+        apk)     as_root apk update ;;
+        brew)    brew update 2>/dev/null || true ;;
+        *)       : ;;
+    esac
+}
+
+install_core_packages() {
+    log_step "Installing core packages..."
+    if [ -z "$PKG_MGR" ]; then
+        log_warning "No supported package manager found. Skipping system packages."
+        return 0
+    fi
+
+    pkg_refresh || log_warning "Package metadata refresh failed; continuing."
+
+    # Core requirements. zsh only when we intend to use it.
+    local core=(curl git ca-certificates)
+    case "$PKG_MGR" in
+        apk) core=(curl git ca-certificates) ;;
+    esac
+    [ "$SHELL_CHOICE" != "bash" ] && core+=(zsh)
+    pkg_install "${core[@]}" || log_warning "Some core packages failed to install."
+
+    # Nice-to-haves: install best-effort, never fail the run.
+    local extras=()
+    case "$PKG_MGR" in
+        apt-get) extras=(fzf fd-find bat unzip) ;;
+        dnf|yum) extras=(fzf fd-find bat unzip) ;;
+        pacman)  extras=(fzf fd bat unzip) ;;
+        zypper)  extras=(fzf fd bat unzip) ;;
+        apk)     extras=(fzf fd bat) ;;
+        brew)    extras=(fzf fd bat) ;;
+    esac
+    for p in "${extras[@]}"; do
+        pkg_install "$p" >/dev/null 2>&1 || log_info "Optional package '$p' not available; skipping."
+    done
+
+    # WSL helpers (wslview/wslvar/wslpath) for clipboard/browser/path bridging.
+    if is_wsl && [ "$PKG_MGR" = "apt-get" ]; then
+        pkg_install wslu >/dev/null 2>&1 || log_info "wslu not available; WSL helpers limited."
+    fi
+
+    log_success "Core packages handled."
+}
+
+# --- fzf --------------------------------------------------------------------
+install_fzf() {
+    log_step "Setting up fzf..."
+    if have fzf; then
+        log_info "fzf already available ($(fzf --version 2>/dev/null | head -1))."
+        return 0
+    fi
+    if $DRY_RUN; then log_dry "install fzf (package or git --bin fallback)"; return 0; fi
+
+    # Package manager may already have installed it via extras; re-check.
+    have fzf && { log_success "fzf installed via package manager."; return 0; }
+
+    # Fallback: download the binary only (no rc edits -- our config wires fzf).
+    log_info "Installing fzf from GitHub (binary only)..."
+    # Force HTTPS to avoid SSH key prompts in fresh WSL installs.
+    if [ -d "$HOME/.fzf/.git" ]; then
+        git -C "$HOME/.fzf" pull --ff-only >/dev/null 2>&1 || true
+    else
+        rm -rf "$HOME/.fzf" 2>/dev/null || true
+        retry git -c url."https://github.com/".insteadOf="git@github.com:" \
+            clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf" \
+            || { log_warning "Could not clone fzf; fuzzy finding will be unavailable."; return 1; }
+    fi
+    "$HOME/.fzf/install" --bin >/dev/null 2>&1 || true
+    if [ -x "$HOME/.fzf/bin/fzf" ]; then
+        export PATH="$HOME/.fzf/bin:$PATH"
+        log_success "fzf installed to ~/.fzf/bin."
+    else
+        log_warning "fzf binary not found after install."
+        return 1
+    fi
+}
+
+# Materialize fzf shell-integration scripts into $CFG_DIR/fzf so key bindings
+# (Ctrl-R, Ctrl-T) work even when the distro strips the example files (common
+# on slim Docker / imported WSL images) and the binary predates `fzf --bash`.
+setup_fzf_integration() {
+    have fzf || return 0
+    log_step "Preparing fzf shell integration..."
+    if $DRY_RUN; then log_dry "materialize fzf key-bindings/completion into $CFG_DIR/fzf"; return 0; fi
+
+    # Modern fzf (>=0.48) generates integration on the fly; nothing to do.
+    if fzf --bash >/dev/null 2>&1; then
+        log_info "fzf has built-in integration (fzf --bash/--zsh); using that."
+        return 0
+    fi
+
+    local dest="$CFG_DIR/fzf"
+    mkdir -p "$dest"
+    local ver; ver=$(fzf --version 2>/dev/null | awk '{print $1}'); [ -z "$ver" ] && ver="master"
+    local base="https://raw.githubusercontent.com/junegunn/fzf"
+
+    local f src got
+    for f in key-bindings.bash completion.bash key-bindings.zsh completion.zsh; do
+        [ -s "$dest/$f" ] && continue
+        got=""
+        for src in "$HOME/.fzf/shell/$f" \
+                   "/usr/share/doc/fzf/examples/$f" \
+                   "/usr/share/fzf/$f"; do
+            if [ -f "$src" ]; then cp "$src" "$dest/$f"; got=1; break; fi
+        done
+        [ -n "$got" ] && continue
+        # No local copy. Download from upstream unless we're in config-only mode.
+        if [ "$DO_INSTALL" = false ]; then
+            log_info "No local fzf $f and --no-install set; skipping download."
+            continue
+        fi
+        if   curl -fsSL "$base/$ver/shell/$f"   -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        elif curl -fsSL "$base/v$ver/shell/$f"  -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        elif curl -fsSL "$base/master/shell/$f" -o "$dest/$f" 2>/dev/null && [ -s "$dest/$f" ]; then :
+        else
+            rm -f "$dest/$f" 2>/dev/null || true
+            log_info "Could not obtain fzf $f; some bindings may be unavailable."
+        fi
+    done
+    log_success "fzf integration ready in $dest"
+}
+
+# --- Starship ---------------------------------------------------------------
+install_starship() {
+    log_step "Setting up Starship prompt..."
+    if have starship; then
+        log_info "Starship already available ($(starship --version 2>/dev/null | head -1))."
+        return 0
+    fi
+    if $DRY_RUN; then log_dry "install starship into ~/.local/bin"; return 0; fi
+
+    mkdir -p "$HOME/.local/bin"
+    # Install to a user-local dir to avoid needing sudo.
+    if retry sh -c 'curl -fsSL https://starship.rs/install.sh | sh -s -- -y -b "$HOME/.local/bin"'; then
+        export PATH="$HOME/.local/bin:$PATH"
+        log_success "Starship installed to ~/.local/bin."
+    else
+        log_warning "Starship install failed; prompt will fall back to default."
+        return 1
+    fi
+}
+
+# --- Oh My Zsh + plugins ----------------------------------------------------
+install_oh_my_zsh() {
+    log_step "Setting up Oh My Zsh..."
+    if [ -d "$HOME/.oh-my-zsh" ]; then
+        log_info "Oh My Zsh already installed."
+        return 0
+    fi
+    if $DRY_RUN; then log_dry "install Oh My Zsh (--unattended --keep-zshrc)"; return 0; fi
+
+    # Ensure a .zshrc exists first so the installer keeps it (we manage it).
+    touch "$HOME/.zshrc"
+    if RUNZSH=no CHSH=no KEEP_ZSHRC=yes retry sh -c \
+        'curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh | sh -s -- --unattended --keep-zshrc'; then
+        log_success "Oh My Zsh installed."
+    else
+        log_warning "Oh My Zsh install failed; zsh will work but without OMZ plugins."
+        return 1
+    fi
+}
+
+install_zsh_plugins() {
+    [ -d "$HOME/.oh-my-zsh" ] || return 0
+    log_step "Installing Zsh plugins..."
+    local custom="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+    if $DRY_RUN; then log_dry "clone zsh-autosuggestions, zsh-syntax-highlighting, history-substring-search"; return 0; fi
+
+    clone_plugin() {
+        local url="$1" dest="$2"
+        if [ -d "$dest/.git" ]; then
+            git -C "$dest" pull --ff-only >/dev/null 2>&1 || true
+        else
+            retry git -c url."https://github.com/".insteadOf="git@github.com:" \
+                clone --depth 1 "$url" "$dest" \
+                || log_warning "Failed to clone $(basename "$dest")."
+        fi
+    }
+    clone_plugin https://github.com/zsh-users/zsh-autosuggestions      "$custom/plugins/zsh-autosuggestions"
+    clone_plugin https://github.com/zsh-users/zsh-syntax-highlighting  "$custom/plugins/zsh-syntax-highlighting"
+    clone_plugin https://github.com/zsh-users/zsh-history-substring-search "$custom/plugins/zsh-history-substring-search"
+    log_success "Zsh plugins installed."
+}
+
+# --- Configuration files ----------------------------------------------------
+write_common_config() {
+    log_step "Writing shared shell config..."
+    write_file "$CFG_DIR/common.sh" <<'EOF'
+# Managed by universal-terminal-setup. Do not edit directly --
+# put personal tweaks in ~/.config/terminal-setup/local.sh instead.
+
+# Preferred editor: first one that exists.
+for _ed in nvim vim nano vi; do
+    if command -v "$_ed" >/dev/null 2>&1; then
+        export EDITOR="$_ed"; export VISUAL="$_ed"; break
+    fi
+done
+unset _ed
+
+# Choose a UTF-8 locale only if the environment hasn't set one (avoids
+# the "setlocale: cannot change locale" spam on minimal WSL images).
+if [ -z "${LANG:-}" ]; then
+    if locale -a 2>/dev/null | grep -qiE '^C\.UTF-?8$'; then
+        export LANG=C.UTF-8
+    elif locale -a 2>/dev/null | grep -qiE '^en_US\.UTF-?8$'; then
+        export LANG=en_US.UTF-8
+    fi
+fi
+
+# User-local bin dirs on PATH (deduplicated).
+for _d in "$HOME/.local/bin" "$HOME/.fzf/bin"; do
+    case ":$PATH:" in
+        *":$_d:"*) ;;
+        *) [ -d "$_d" ] && PATH="$_d:$PATH" ;;
+    esac
+done
+unset _d
+export PATH
+
+# Color-capable ls (GNU adds --color; BSD/macOS uses -G and is left alone).
+if ls --color=auto >/dev/null 2>&1; then
+    alias ls='ls --color=auto'
+fi
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+
+# Git shortcuts.
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline --graph --decorate'
+alias gd='git diff'
+alias gb='git branch'
+alias gco='git checkout'
+alias gpl='git pull'
+alias gst='git stash'
+
+# Quick mkdir + cd.
+mkcd() { mkdir -p "$1" && cd "$1" || return 1; }
+
+# fzf source command: prefer fd / fdfind, fall back to find.
+if command -v fzf >/dev/null 2>&1; then
+    if command -v fdfind >/dev/null 2>&1; then
+        export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
+    elif command -v fd >/dev/null 2>&1; then
+        export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+    else
+        export FZF_DEFAULT_COMMAND='find . -type f -not -path "*/.git/*" -not -path "*/node_modules/*" 2>/dev/null'
+    fi
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+    export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border --info=inline'
+fi
+
+# Personal overrides, loaded last so they always win.
+[ -f "$HOME/.config/terminal-setup/local.sh" ] && . "$HOME/.config/terminal-setup/local.sh"
+EOF
+
+    # WSL-specific integration, appended only on WSL.
+    if is_wsl; then
+        append_file "$CFG_DIR/common.sh" <<'EOF'
+
+# --- WSL integration -------------------------------------------------------
+# Clipboard: pbcopy/pbpaste like macOS, bridged to Windows.
+if command -v clip.exe >/dev/null 2>&1; then
+    alias pbcopy='clip.exe'
+fi
+if command -v powershell.exe >/dev/null 2>&1; then
+    pbpaste() { powershell.exe -NoProfile -Command Get-Clipboard 2>/dev/null | sed 's/\r$//'; }
+fi
+# Open files / folders / URLs with Windows.
+if command -v explorer.exe >/dev/null 2>&1; then
+    alias open='explorer.exe'
+    e() { explorer.exe "${1:-.}"; }
+fi
+if command -v wslview >/dev/null 2>&1; then
+    export BROWSER=wslview
+    alias xdg-open='wslview'
+fi
+# Jump to the Windows user profile (needs wslu's wslvar).
+winhome() {
+    if command -v wslvar >/dev/null 2>&1 && command -v wslpath >/dev/null 2>&1; then
+        cd "$(wslpath "$(wslvar USERPROFILE 2>/dev/null)")" || return 1
+    else
+        echo "winhome requires wslu:  sudo apt install wslu" >&2
+        return 1
+    fi
+}
+EOF
+    fi
+    log_success "Shared config written to $CFG_DIR/common.sh"
+}
+
+write_bash_config() {
+    log_step "Writing bash config..."
+    write_file "$CFG_DIR/bash.sh" <<'EOF'
+# Managed by universal-terminal-setup (bash).
+
+# History: large, deduped, timestamped, shared across sessions.
+HISTSIZE=100000
+HISTFILESIZE=200000
+HISTCONTROL=ignoreboth:erasedups
+HISTTIMEFORMAT='%F %T '
+shopt -s histappend 2>/dev/null
+shopt -s checkwinsize 2>/dev/null
+shopt -s cdspell 2>/dev/null
+shopt -s autocd 2>/dev/null
+
+# Programmable completion.
+if ! shopt -oq posix; then
+    if [ -f /usr/share/bash-completion/bash_completion ]; then
+        . /usr/share/bash-completion/bash_completion
+    elif [ -f /etc/bash_completion ]; then
+        . /etc/bash_completion
+    fi
+fi
+
+# fzf key bindings + completion (robust across install methods).
+if command -v fzf >/dev/null 2>&1; then
+    if fzf --bash >/dev/null 2>&1; then
+        eval "$(fzf --bash)"
+    else
+        for _f in /usr/share/doc/fzf/examples/key-bindings.bash \
+                  /usr/share/doc/fzf/examples/completion.bash \
+                  /usr/share/fzf/key-bindings.bash \
+                  /usr/share/fzf/completion.bash \
+                  /usr/share/bash-completion/completions/fzf \
+                  "$HOME/.fzf.bash"; do
+            [ -f "$_f" ] && . "$_f"
+        done
+        unset _f
+    fi
+    # Ctrl-F as an extra "find file" trigger (Ctrl-T still works too).
+    if type fzf-file-widget >/dev/null 2>&1; then
+        bind -m emacs-standard -x '"\C-f": fzf-file-widget' 2>/dev/null
+    fi
+fi
+
+# Starship prompt.
+if command -v starship >/dev/null 2>&1; then
+    eval "$(starship init bash)"
+fi
+EOF
+    log_success "Bash config written."
+}
+
+write_zsh_config() {
+    log_step "Writing zsh config..."
+    write_file "$CFG_DIR/zsh.sh" <<'EOF'
+# Managed by universal-terminal-setup (zsh).
+
+export ZSH="${ZSH:-$HOME/.oh-my-zsh}"
+ZSH_THEME=""                       # Prompt is owned by Starship.
+DISABLE_AUTO_UPDATE=true           # We manage updates ourselves.
+zstyle ':omz:update' mode disabled 2>/dev/null
+# Order matters: syntax-highlighting before history-substring-search.
+plugins=(git colored-man-pages zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search)
+if [ -f "$ZSH/oh-my-zsh.sh" ]; then
+    source "$ZSH/oh-my-zsh.sh"
+fi
+
+# History.
+HISTSIZE=100000
+SAVEHIST=100000
+HISTFILE="$HOME/.zsh_history"
+setopt SHARE_HISTORY HIST_IGNORE_ALL_DUPS HIST_REDUCE_BLANKS \
+       HIST_IGNORE_SPACE HIST_VERIFY INC_APPEND_HISTORY
+setopt AUTO_CD CORRECT INTERACTIVE_COMMENTS
+zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+
+# history-substring-search key bindings (Up/Down + Ctrl-P/Ctrl-N).
+if typeset -f history-substring-search-up >/dev/null 2>&1; then
+    bindkey '^[[A' history-substring-search-up
+    bindkey '^[[B' history-substring-search-down
+    bindkey '^P'   history-substring-search-up
+    bindkey '^N'   history-substring-search-down
+fi
+
+# fzf key bindings + completion.
+if command -v fzf >/dev/null 2>&1; then
+    if fzf --zsh >/dev/null 2>&1; then
+        source <(fzf --zsh)
+    else
+        for _f in /usr/share/doc/fzf/examples/key-bindings.zsh \
+                  /usr/share/doc/fzf/examples/completion.zsh \
+                  /usr/share/fzf/key-bindings.zsh \
+                  /usr/share/fzf/completion.zsh \
+                  "$HOME/.fzf.zsh"; do
+            [ -f "$_f" ] && source "$_f"
+        done
+        unset _f
+    fi
+    # Ctrl-F as an extra "find file" trigger (Ctrl-T still works too).
+    if (( ${+widgets[fzf-file-widget]} )); then
+        bindkey '^F' fzf-file-widget
+    fi
+fi
+
+# Starship prompt.
+if command -v starship >/dev/null 2>&1; then
+    eval "$(starship init zsh)"
+fi
+EOF
+    log_success "Zsh config written."
+}
+
+write_starship_config() {
+    local toml="$HOME/.config/starship.toml"
+    if [ -f "$toml" ]; then
+        log_info "Existing $toml left untouched."
+        return 0
+    fi
+    log_step "Writing Nerd-Font-free starship.toml..."
+    write_file "$toml" <<'EOF'
+# Generated by universal-terminal-setup.
+# Deliberately avoids Nerd-Font glyphs so it renders cleanly everywhere,
+# including a fresh WSL terminal with the default font. Install a Nerd Font
+# and customize freely once you're set up.
+
+add_newline = true
+command_timeout = 1500
+
+format = """
+$directory$git_branch$git_status$git_state\
+$python$nodejs$rust$golang$java$cmd_duration$line_break$character"""
+
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+vimcmd_symbol = "[❮](bold green)"
+
+[directory]
+truncation_length = 4
+truncate_to_repo = true
+style = "bold cyan"
+read_only = " ro"
+
+[git_branch]
+symbol = "git:"
+style = "bold purple"
+
+[git_status]
+style = "bold yellow"
+
+[git_state]
+style = "bold red"
+
+[cmd_duration]
+min_time = 2000
+format = "took [$duration]($style) "
+style = "bold yellow"
+
+[python]
+symbol = "py "
+[nodejs]
+symbol = "node "
+[rust]
+symbol = "rs "
+[golang]
+symbol = "go "
+[java]
+symbol = "java "
+EOF
+    log_success "starship.toml written."
+}
+
+# --- Wire rc files ----------------------------------------------------------
+wire_bashrc() {
+    local body
+    body=$(cat <<'EOF'
+[ -f "$HOME/.config/terminal-setup/common.sh" ] && . "$HOME/.config/terminal-setup/common.sh"
+[ -f "$HOME/.config/terminal-setup/bash.sh" ] && . "$HOME/.config/terminal-setup/bash.sh"
+EOF
+)
+    ensure_block "$HOME/.bashrc" "$body"
+
+    # Some login shells read ~/.bash_profile / ~/.profile and may not source
+    # ~/.bashrc. Make sure interactive WSL/login sessions pick it up.
+    if [ -f "$HOME/.bash_profile" ] && ! grep -q '\.bashrc' "$HOME/.bash_profile" 2>/dev/null; then
+        ensure_block "$HOME/.bash_profile" '[ -f "$HOME/.bashrc" ] && . "$HOME/.bashrc"'
+    fi
+}
+
+wire_zshrc() {
+    local body
+    body=$(cat <<'EOF'
+[ -f "$HOME/.config/terminal-setup/common.sh" ] && . "$HOME/.config/terminal-setup/common.sh"
+[ -f "$HOME/.config/terminal-setup/zsh.sh" ] && . "$HOME/.config/terminal-setup/zsh.sh"
+EOF
+)
+    ensure_block "$HOME/.zshrc" "$body"
+}
+
+# --- Default shell ----------------------------------------------------------
+current_login_shell() {
+    local s
+    s=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)
+    [ -z "$s" ] && s="${SHELL:-}"
+    echo "$s"
+}
+
+set_default_shell_zsh() {
+    $DO_CHSH || { log_info "Skipping default-shell change (--no-chsh)."; return 0; }
+    local zsh_path
+    zsh_path=$(command -v zsh 2>/dev/null) || { log_warning "zsh not found; cannot set default shell."; return 1; }
+
+    case "$(current_login_shell)" in
+        *zsh) log_info "Default shell is already zsh."; return 0 ;;
+    esac
+
+    if $DRY_RUN; then log_dry "add $zsh_path to /etc/shells and chsh to it"; return 0; fi
+
+    # zsh must be listed in /etc/shells for chsh to accept it.
+    if [ -w /etc/shells ] || is_root || have sudo; then
+        if ! grep -qxF "$zsh_path" /etc/shells 2>/dev/null; then
+            echo "$zsh_path" | as_root tee -a /etc/shells >/dev/null 2>&1 || true
+        fi
+    fi
+
+    if ! confirm "Make zsh your default login shell?"; then
+        log_info "Leaving default shell unchanged. Run 'zsh' anytime, or 'chsh -s $zsh_path' later."
+        return 0
+    fi
+
+    # Prefer sudo/root chsh to avoid an interactive PAM password prompt.
+    if as_root chsh -s "$zsh_path" "$(id -un)" 2>/dev/null; then
+        log_success "Default shell set to zsh. Restart your terminal to use it."
+    elif chsh -s "$zsh_path" 2>/dev/null; then
+        log_success "Default shell set to zsh. Restart your terminal to use it."
+    else
+        log_warning "Could not change the default shell automatically."
+        log_info  "Set it manually with:  chsh -s $zsh_path"
+        log_info  "Or just type 'zsh' to start it on demand."
+    fi
+}
+
+# --- Summary ----------------------------------------------------------------
+print_summary() {
+    local target_shell="$1"
+    echo -e "${GREEN}"
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║                       Setup Complete!                         ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    echo "Installed / configured:"
+    have starship && echo "  • Starship prompt"
+    have fzf      && echo "  • fzf  (Ctrl-R history · Ctrl-T / Ctrl-F files)"
+    [ "$target_shell" = "zsh" ] && [ -d "$HOME/.oh-my-zsh" ] && \
+                     echo "  • Oh My Zsh + autosuggestions, syntax highlighting, history search"
+    echo "  • Git aliases (gs, ga, gc, gp, gl, gd, gb, gco, gpl, gst)"
+    echo "  • Config in ~/.config/terminal-setup/ (re-run anytime; it won't duplicate)"
+    echo
+    if [ "$target_shell" = "zsh" ]; then
+        echo "Reload now:  exec zsh    (or restart your terminal)"
+    else
+        echo "Reload now:  source ~/.bashrc"
+    fi
+
+    if is_wsl; then
+        echo
+        echo -e "${CYAN}WSL notes:${NC}"
+        echo "  • Prompt glyphs work without a Nerd Font. For full icons, install a"
+        echo "    Nerd Font (e.g. FiraCode/CaskaydiaCove NF) and select it in your"
+        echo "    Windows Terminal profile (Settings → your distro → Appearance → Font)."
+        echo "  • Clipboard: 'pbcopy' / 'pbpaste'.  Open files: 'open <path>' / 'e .'."
+        if [ "$(wsl_version)" = "1" ]; then
+            echo "  • Detected WSL1. WSL2 is recommended:  wsl --set-version <distro> 2"
+        fi
+        echo "  • If tab-completion feels slow, Windows PATH is likely being appended."
+        echo "    Disable it by adding to /etc/wsl.conf then 'wsl --shutdown':"
+        echo "        [interop]"
+        echo "        appendWindowsPath = false"
+    fi
+    echo
+}
+
+# --- Platform flows ---------------------------------------------------------
+resolve_shell_choice() {
+    case "$SHELL_CHOICE" in
+        bash) echo "bash"; return ;;
+        zsh)  echo "zsh"; return ;;
+    esac
+    # auto
+    if [ "$DO_INSTALL" = false ]; then
+        have zsh && echo "zsh" || echo "bash"
+    else
+        echo "zsh"   # we install zsh in auto mode
+    fi
+}
+
+setup_unix() {
+    detect_pkg_mgr || log_warning "No supported package manager detected."
+
+    local target_shell
+    target_shell=$(resolve_shell_choice)
+    if [ "$SHELL_CHOICE" = "zsh" ] && [ "$DO_INSTALL" = false ] && ! have zsh; then
+        log_warning "zsh requested but not installed and --no-install given; using bash."
+        target_shell="bash"
+    fi
+    log_info "Target shell: $target_shell"
+
+    if $DO_INSTALL; then
+        install_core_packages || log_warning "Package phase had issues; continuing."
+        install_fzf      || true
+        install_starship || true
+        if [ "$target_shell" = "zsh" ]; then
+            install_oh_my_zsh   || true
+            install_zsh_plugins || true
+        fi
+    else
+        log_info "--no-install: skipping package/tool installation, configuring only."
+    fi
+
+    # Always write shared + both shell configs so whichever shell you land in
+    # (handy if chsh is skipped or fails) behaves consistently.
+    write_common_config
+    write_bash_config
+    write_starship_config
+    wire_bashrc
+    if [ "$target_shell" = "zsh" ]; then
+        write_zsh_config
+        wire_zshrc
+        set_default_shell_zsh
+    fi
+
+    print_summary "$target_shell"
+}
+
+setup_macos() {
+    log_info "macOS detected."
+    if [ "$DO_INSTALL" = true ] && ! have brew; then
+        if confirm "Homebrew is required on macOS. Install it now?"; then
+            if $DRY_RUN; then
+                log_dry "install Homebrew"
+            else
+                retry /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+                    || log_warning "Homebrew install failed; continuing with what's available."
+            fi
+        fi
+    fi
+    setup_unix
+}
+
+print_windows_notice() {
+    log_warning "This looks like native Windows (Git Bash / MSYS / Cygwin)."
+    echo
+    echo "For Windows PowerShell, run the PowerShell setup instead:"
+    echo
+    echo "    iwr -useb https://raw.githubusercontent.com/aymaneallaoui/setup-terminal/master/setup.ps1 | iex"
+    echo
+    echo "This bash script targets Linux, WSL, and macOS."
+}
+
+# --- CLI --------------------------------------------------------------------
+usage() {
+    cat <<EOF
+Universal Terminal Setup v$VERSION
+
+Usage: ./setup.sh [options]
+
+Options:
+  --shell <auto|zsh|bash>   Which shell to configure (default: auto => zsh).
+  --no-chsh                 Don't change the default login shell.
+  --no-install              Configure only; skip installing packages/tools.
+  -y, --yes, --unattended   Don't prompt; assume yes to all questions.
+  -n, --dry-run             Show what would happen without making changes.
+  -h, --help                Show this help.
+      --version             Print version and exit.
+
+Examples:
+  ./setup.sh                          # full setup, auto-detect (installs zsh)
+  ./setup.sh --shell bash             # configure bash only, no zsh
+  ./setup.sh --no-chsh -y             # set up zsh but keep current default shell
+  ./setup.sh --no-install             # just (re)write configs for existing tools
+  ./setup.sh --dry-run                # preview actions
+EOF
+}
+
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --shell)
+                shift
+                case "${1:-}" in
+                    auto|zsh|bash) SHELL_CHOICE="$1" ;;
+                    *) log_error "Invalid --shell value: '${1:-}' (use auto|zsh|bash)"; exit 2 ;;
+                esac
+                ;;
+            --shell=*) SHELL_CHOICE="${1#*=}"
+                case "$SHELL_CHOICE" in auto|zsh|bash) ;; *) log_error "Invalid --shell value."; exit 2 ;; esac ;;
+            --no-chsh)    DO_CHSH=false ;;
+            --no-install) DO_INSTALL=false ;;
+            -y|--yes|--unattended) UNATTENDED=true; ASSUME_YES=true ;;
+            -n|--dry-run) DRY_RUN=true ;;
+            -h|--help)    usage; exit 0 ;;
+            --version)    echo "$VERSION"; exit 0 ;;
+            *) log_error "Unknown option: $1"; echo; usage; exit 2 ;;
+        esac
+        shift
+    done
+}
+
+main() {
+    parse_args "$@"
+
+    echo -e "${CYAN}"
+    echo "╔═══════════════════════════════════════════════════════════════╗"
+    echo "║                  Universal Terminal Setup                     ║"
+    echo "║              Starship · fzf · zsh · WSL-ready                  ║"
+    echo "╚═══════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+
+    local os; os=$(detect_os)
+    if is_wsl; then
+        log_info "Environment: WSL$(wsl_version) (${WSL_DISTRO_NAME:-linux})"
+    else
+        log_info "Environment: $os"
+    fi
+    $DRY_RUN && log_dry "Dry run -- no changes will be made."
+
+    case "$os" in
+        linux)   setup_unix ;;
+        macos)   setup_macos ;;
+        windows) print_windows_notice; exit 0 ;;
+        *)       log_error "Unsupported environment: $os"; exit 1 ;;
+    esac
+}
+
 main "$@"
